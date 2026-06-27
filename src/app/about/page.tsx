@@ -15,7 +15,10 @@ export default function AboutPage() {
           <h1 style={styles.title}>Loyiha haqida</h1>
 
           <p style={styles.text}>
-            <b>«O‘zbek tili neologizmlari: axborot-qidiruv leksikografik resursi»</b>{" "}
+            <b>
+              «O‘zbek tili neologizmlari: axborot-qidiruv leksikografik
+              resursi»
+            </b>{" "}
             — zamonaviy o‘zbek tilidagi yangi so‘zlar, iboralar va semantik
             neologizmlarni jamlash, izlash hamda ilmiy o‘rganishga mo‘ljallangan
             raqamli platformadir.
@@ -25,8 +28,8 @@ export default function AboutPage() {
             Loyiha mustaqil tadqiqotchi, o‘qituvchi{" "}
             <b>Vapayeva Anaxon Nasurillayevna</b> tomonidan{" "}
             <b>
-              «O‘zbek va rus tillaridagi neologizmlarning
-              qiyosiy-chog‘ishtirma tahlili»
+              «O‘zbek va rus tillaridagi neologizmlarning qiyosiy-chog‘ishtirma
+              tahlili»
             </b>{" "}
             mavzusidagi filologiya fanlari bo‘yicha falsafa doktori (PhD)
             darajasini olish uchun yozilgan dissertatsiya doirasida yaratilgan.
@@ -53,11 +56,11 @@ export default function AboutPage() {
           </p>
 
           <div style={styles.contactBox}>
-            <h2 style={styles.contactTitle}>Kontakt</h2>
+            <h2 style={styles.contactTitle}>Kontaktlar</h2>
 
             <p style={styles.contactText}>
               Elektron pochta:{" "}
-              <a href="mailto:anechkavapayeva@gmail.com" style={styles.emailLink}>
+              <a href="mailto:anechkavapayeva@gmail.com" style={styles.email}>
                 anechkavapayeva@gmail.com
               </a>
             </p>
@@ -72,7 +75,7 @@ const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: "#f7f8fb",
-    padding: "32px 18px 60px",
+    padding: "32px 18px 70px",
     color: "#172033",
   },
 
@@ -93,8 +96,8 @@ const styles: Record<string, CSSProperties> = {
   card: {
     background: "#ffffff",
     border: "1px solid #e6e9f0",
-    borderRadius: 26,
-    padding: "34px 36px",
+    borderRadius: 28,
+    padding: "36px",
     boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
   },
 
@@ -108,7 +111,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   title: {
-    margin: "0 0 22px",
+    margin: "0 0 24px",
     fontSize: 42,
     lineHeight: 1.1,
     fontWeight: 900,
@@ -143,7 +146,7 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.7,
   },
 
-  emailLink: {
+  email: {
     color: "#2563eb",
     fontWeight: 800,
     textDecoration: "none",
