@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type AdminLang = "uz" | "ru";
 
@@ -97,6 +97,11 @@ const texts = {
     wordsList: "So‘zlar ro‘yxati",
     totalWords: "Jami so‘zlar",
     refresh: "Yangilash",
+    adminSearch: "Admin ichida qidirish",
+    adminSearchPlaceholder:
+      "So‘z, kategoriya, ma’no, yil yoki manba bo‘yicha qidirish...",
+    shownWords: "Ko‘rsatilmoqda",
+    showMore: "Yana ko‘rsatish",
     loading: "Yuklanmoqda...",
     edit: "Tahrirlash",
     delete: "O‘chirish",
@@ -171,6 +176,11 @@ const texts = {
     wordsList: "Список слов",
     totalWords: "Всего слов",
     refresh: "Обновить",
+    adminSearch: "Поиск внутри админки",
+    adminSearchPlaceholder:
+      "Поиск по слову, категории, значению, году или источнику...",
+    shownWords: "Показано",
+    showMore: "Показать ещё",
     loading: "Загрузка...",
     edit: "Редактировать",
     delete: "Удалить",
@@ -263,6 +273,38 @@ export default function AdminPage() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(60);
+
+  const filteredAdminWords = useMemo(() => {
+    const query = adminSearch.toLowerCase().trim();
+
+    if (!query) return words;
+
+    return words.filter((word) => {
+      const searchableText = [
+        word.title,
+        word.category,
+        word.meaning,
+        word.example || "",
+        word.source || "",
+        word.appearance_year ? String(word.appearance_year) : "",
+        word.slug,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(query);
+    });
+  }, [words, adminSearch]);
+
+  const visibleAdminWords = useMemo(() => {
+    return filteredAdminWords.slice(0, visibleLimit);
+  }, [filteredAdminWords, visibleLimit]);
+
+  useEffect(() => {
+    setVisibleLimit(60);
+  }, [adminSearch]);
 
   useEffect(() => {
     const savedLang = localStorage.getItem("admin_lang");
@@ -892,9 +934,9 @@ export default function AdminPage() {
 
   if (!isLoggedIn) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-sky-100 text-slate-900">
         <section className="mx-auto flex min-h-screen max-w-md items-center px-6">
-          <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="w-full rounded-[2rem] border border-blue-100 bg-white/90 p-8 shadow-2xl shadow-blue-100 backdrop-blur">
             <div className="mb-6 flex items-center justify-between gap-3">
               <h1 className="text-3xl font-bold text-blue-700">
                 {t.adminPanel}
@@ -958,8 +1000,8 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-50 border-b bg-white">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-white text-slate-900">
+      <header className="sticky top-0 z-50 border-b border-blue-100 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
           <div>
             <h1 className="text-2xl font-bold text-blue-700">
@@ -1050,6 +1092,33 @@ export default function AdminPage() {
             {message}
           </p>
         )}
+
+        <div className="mb-8 grid gap-4 md:grid-cols-3">
+          <div className="rounded-3xl border border-blue-100 bg-white/90 p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">{t.totalWords}</p>
+            <h2 className="mt-2 text-4xl font-black text-blue-700">
+              {words.length}
+            </h2>
+          </div>
+
+          <div className="rounded-3xl border border-blue-100 bg-white/90 p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">
+              {t.totalCategories}
+            </p>
+            <h2 className="mt-2 text-4xl font-black text-sky-600">
+              {categories.length}
+            </h2>
+          </div>
+
+          <div className="rounded-3xl border border-blue-100 bg-white/90 p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">
+              {t.shownWords}
+            </p>
+            <h2 className="mt-2 text-4xl font-black text-slate-900">
+              {filteredAdminWords.length}
+            </h2>
+          </div>
+        </div>
 
         <div className="grid gap-8 lg:grid-cols-[420px_1fr]">
           <div className="space-y-8">
@@ -1325,13 +1394,32 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              <div className="mb-5 rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+                <label className="mb-2 block text-sm font-bold text-blue-700">
+                  {t.adminSearch}
+                </label>
+
+                <input
+                  type="text"
+                  value={adminSearch}
+                  onChange={(event) => setAdminSearch(event.target.value)}
+                  placeholder={t.adminSearchPlaceholder}
+                  className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 outline-none focus:border-blue-500"
+                />
+
+                <p className="mt-3 text-sm text-slate-500">
+                  {t.shownWords}: {visibleAdminWords.length} /{" "}
+                  {filteredAdminWords.length}
+                </p>
+              </div>
+
               {loading ? (
                 <p className="rounded-2xl bg-slate-50 p-5 text-center text-slate-600">
                   {t.loading}
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {words.map((word) => (
+                  {visibleAdminWords.map((word) => (
                     <div
                       key={word.id}
                       className="rounded-2xl border border-slate-200 p-5"
@@ -1389,10 +1477,20 @@ export default function AdminPage() {
                     </div>
                   ))}
 
-                  {words.length === 0 && (
+                  {filteredAdminWords.length === 0 && (
                     <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-600">
                       {t.noWords}
                     </p>
+                  )}
+
+                  {visibleAdminWords.length < filteredAdminWords.length && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleLimit((prev) => prev + 60)}
+                      className="w-full rounded-2xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700"
+                    >
+                      {t.showMore}
+                    </button>
                   )}
                 </div>
               )}
