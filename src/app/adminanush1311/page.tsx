@@ -250,6 +250,25 @@ function escapeHtml(value: string | number | null | undefined) {
     .replaceAll("'", "&#039;");
 }
 
+
+async function readResponseData(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return {} as { message?: string };
+  }
+
+  try {
+    return JSON.parse(text) as { message?: string };
+  } catch {
+    return { message: text };
+  }
+}
+
+function waitFrame() {
+  return new Promise((resolve) => window.setTimeout(resolve, 20));
+}
+
 export default function AdminPage() {
   const [adminLang, setAdminLang] = useState<AdminLang>("uz");
   const t = texts[adminLang];
@@ -273,6 +292,7 @@ export default function AdminPage() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [busyWordId, setBusyWordId] = useState<string | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(60);
 
@@ -674,6 +694,16 @@ export default function AdminPage() {
 
     const lowerName = file.name.toLowerCase();
 
+    if (lowerName.endsWith(".docx")) {
+      setMessage(
+        adminLang === "uz"
+          ? "DOCX fayl o‘qilmaydi. Iltimos, .doc, .html yoki .htm fayl tanlang."
+          : "DOCX-файл не читается. Выберите .doc, .html или .htm файл."
+      );
+      event.target.value = "";
+      return;
+    }
+
     if (
       !lowerName.endsWith(".doc") &&
       !lowerName.endsWith(".html") &&
@@ -700,30 +730,46 @@ export default function AdminPage() {
       let successCount = 0;
       let errorCount = 0;
 
-      for (const importedWord of items) {
+      for (let index = 0; index < items.length; index += 1) {
+        const importedWord = items[index];
+
+        setMessage(
+          adminLang === "uz"
+            ? `Import qilinmoqda: ${index + 1}/${items.length}`
+            : `Идёт импорт: ${index + 1}/${items.length}`
+        );
+
         if (
           !importedWord.title ||
           !importedWord.category ||
           !importedWord.meaning
         ) {
           errorCount += 1;
+          await waitFrame();
           continue;
         }
 
-        const response = await fetch("/api/admin/words", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-admin-password": password,
-          },
-          body: JSON.stringify(importedWord),
-        });
+        try {
+          const response = await fetch("/api/admin/words", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-admin-password": password,
+            },
+            body: JSON.stringify(importedWord),
+          });
 
-        if (response.ok) {
-          successCount += 1;
-        } else {
+          if (response.ok) {
+            successCount += 1;
+          } else {
+            errorCount += 1;
+          }
+        } catch (error) {
+          console.error(error);
           errorCount += 1;
         }
+
+        await waitFrame();
       }
 
       await loadWords(password, false);
@@ -814,26 +860,34 @@ export default function AdminPage() {
 
     if (!confirmed) return;
 
-    setLoading(true);
+    setBusyWordId(id);
+    setMessage(
+      adminLang === "uz" ? "So‘z o‘chirilmoqda..." : "Слово удаляется..."
+    );
 
-    const response = await fetch(`/api/admin/words?id=${id}`, {
-      method: "DELETE",
-      headers: {
-        "x-admin-password": password,
-      },
-    });
+    try {
+      const response = await fetch(`/api/admin/words?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-password": password,
+        },
+      });
 
-    const data = await response.json();
+      const data = await readResponseData(response);
 
-    if (!response.ok) {
-      setMessage(data.message || t.wordDeleteError);
-      setLoading(false);
-      return;
+      if (!response.ok) {
+        setMessage(data.message || t.wordDeleteError);
+        return;
+      }
+
+      setWords((prev) => prev.filter((word) => word.id !== id));
+      setMessage(t.wordDeleted);
+    } catch (error) {
+      console.error(error);
+      setMessage(t.wordDeleteError);
+    } finally {
+      setBusyWordId(null);
     }
-
-    setMessage(t.wordDeleted);
-    await loadWords();
-    setLoading(false);
   }
 
   async function saveCategory() {
@@ -1446,9 +1500,10 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => deleteWord(word.id)}
-                            className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200"
+                            disabled={busyWordId === word.id}
+                            className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-60"
                           >
-                            {t.delete}
+                            {busyWordId === word.id ? t.loading : t.delete}
                           </button>
                         </div>
                       </div>
