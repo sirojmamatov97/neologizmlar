@@ -177,7 +177,7 @@ export default function HomePage() {
           <h2 className="mx-auto mb-6 max-w-4xl text-4xl font-black leading-tight tracking-tight text-slate-950 md:text-6xl">
             Neologizmlarni{" "}
             <span className="bg-gradient-to-r from-blue-700 via-sky-500 to-blue-700 bg-clip-text text-transparent">
-              tez va aqlli
+              tez va qulay
             </span>{" "}
             izlash platformasi
           </h2>
