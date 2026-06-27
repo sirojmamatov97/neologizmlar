@@ -60,11 +60,11 @@ const texts = {
     viewDictionary: "Lug‘atni ko‘rish",
     logout: "Chiqish",
 
-    exportWords: "So‘zlarni eksport qilish",
-    importWords: "So‘zlarni import qilish",
-    importOnlyJson: "Faqat JSON fayl tanlang",
+    exportWords: "Word eksport",
+    importWords: "Word import",
+    importOnlyWord: "Faqat Word (.doc yoki .html) fayl tanlang",
     importEmpty: "Import uchun so‘zlar topilmadi",
-    exportDone: "So‘zlar eksport qilindi",
+    exportDone: "Word fayl eksport qilindi",
     importDone: "Import yakunlandi",
     importError: "Import qilishda xatolik",
 
@@ -134,11 +134,11 @@ const texts = {
     viewDictionary: "Открыть словарь",
     logout: "Выйти",
 
-    exportWords: "Экспорт слов",
-    importWords: "Импорт слов",
-    importOnlyJson: "Выберите только JSON-файл",
+    exportWords: "Word экспорт",
+    importWords: "Word импорт",
+    importOnlyWord: "Выберите только Word-файл (.doc или .html)",
     importEmpty: "Слова для импорта не найдены",
-    exportDone: "Слова экспортированы",
+    exportDone: "Word-файл экспортирован",
     importDone: "Импорт завершён",
     importError: "Ошибка импорта",
 
@@ -204,9 +204,40 @@ function valueToString(value: unknown) {
   return String(value);
 }
 
-function makeExportFileName() {
+function makeExportFileName(extension: string) {
   const date = new Date().toISOString().slice(0, 10);
-  return `neologizmlar-words-${date}.json`;
+  return `neologizmlar-words-${date}.${extension}`;
+}
+
+function downloadFile(content: string, fileName: string, type: string) {
+  const blob = new Blob([content], {
+    type,
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+function cleanText(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function escapeHtml(value: string | number | null | undefined) {
+  return cleanText(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 export default function AdminPage() {
@@ -392,36 +423,206 @@ export default function AdminPage() {
     }));
   }
 
-  function exportWords() {
-    const exportData = {
-      exported_at: new Date().toISOString(),
-      total: words.length,
-      words: words.map((word) => ({
-        title: word.title,
-        category: word.category,
-        meaning: word.meaning,
-        example: word.example || "",
-        source: word.source || "",
-        appearance_year: word.appearance_year || null,
-        slug: word.slug,
-      })),
-    };
+  function createWordsHtml() {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Neologizmlar</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              padding: 30px;
+              color: #111827;
+            }
+            h1 {
+              color: #1d4ed8;
+            }
+            .word-export-item {
+              border-bottom: 1px solid #ddd;
+              padding: 14px 0;
+            }
+            .title {
+              font-size: 20px;
+              font-weight: bold;
+              color: #1d4ed8;
+            }
+            .meta {
+              color: #555;
+              font-size: 14px;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Neologizmlar ro‘yxati</h1>
+          <p>Jami so‘zlar: ${words.length}</p>
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: "application/json;charset=utf-8",
-    });
+          ${words
+            .map(
+              (word, index) => `
+                <div
+                  class="word-export-item"
+                  data-title="${escapeHtml(word.title)}"
+                  data-category="${escapeHtml(word.category)}"
+                  data-meaning="${escapeHtml(word.meaning)}"
+                  data-example="${escapeHtml(word.example || "")}"
+                  data-source="${escapeHtml(word.source || "")}"
+                  data-appearance-year="${escapeHtml(word.appearance_year || "")}"
+                >
+                  <div class="title">${index + 1}. ${escapeHtml(
+                    word.title
+                  )}</div>
+                  <p><b>Kategoriya:</b> ${escapeHtml(word.category)}</p>
+                  <p><b>Ma’nosi:</b> ${escapeHtml(word.meaning)}</p>
+                  <p><b>Misol:</b> ${escapeHtml(word.example || "")}</p>
+                  <p><b>Manba:</b> ${escapeHtml(word.source || "")}</p>
+                  <p class="meta">
+                    <b>Yil:</b> ${escapeHtml(word.appearance_year || "")}
+                    |
+                    <b>Slug:</b> ${escapeHtml(word.slug)}
+                  </p>
+                </div>
+              `
+            )
+            .join("")}
+        </body>
+      </html>
+    `;
+  }
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+  function exportWordsDoc() {
+    downloadFile(
+      createWordsHtml(),
+      makeExportFileName("doc"),
+      "application/msword;charset=utf-8"
+    );
 
-    link.href = url;
-    link.download = makeExportFileName();
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
     setMessage(t.exportDone);
+  }
+
+  function normalizeImportedWord(raw: Record<string, unknown>): WordForm {
+    return {
+      title: valueToString(raw.title ?? raw.word ?? raw.soz ?? raw["so‘z"]).trim(),
+      category: valueToString(
+        raw.category ?? raw.category_id ?? raw.kategoriya
+      ).trim(),
+      meaning: valueToString(
+        raw.meaning ??
+          raw.definition ??
+          raw.manosi ??
+          raw["ma’nosi"] ??
+          raw.izoh
+      ).trim(),
+      example: valueToString(raw.example ?? raw.misol).trim(),
+      source: valueToString(raw.source ?? raw.manba).trim(),
+      appearance_year: valueToString(
+        raw.appearance_year ?? raw.appearanceYear ?? raw.year ?? raw.yil
+      ).trim(),
+    };
+  }
+
+  function getValueFromTextBlock(block: string, labels: string[]) {
+    const lines = block.split(/\r?\n/);
+
+    for (const line of lines) {
+      const cleanLine = line.trim();
+
+      for (const label of labels) {
+        const lowerLine = cleanLine.toLowerCase();
+        const lowerLabel = label.toLowerCase();
+
+        if (lowerLine.startsWith(lowerLabel)) {
+          return cleanLine.slice(label.length).replace(/^[:：]\s*/, "").trim();
+        }
+      }
+    }
+
+    return "";
+  }
+
+  function parseTxtWords(text: string): WordForm[] {
+    const blocks = text
+      .split(/\n\s*-{3,}\s*\n|\n\s*={3,}\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean);
+
+    return blocks.map((block) => {
+      const firstLine = block.split(/\r?\n/)[0] || "";
+      const titleFromFirstLine = firstLine.replace(/^\d+\.\s*/, "").trim();
+
+      const raw = {
+        title:
+          getValueFromTextBlock(block, [
+            "title",
+            "word",
+            "so‘z",
+            "soz",
+            "слово",
+          ]) || titleFromFirstLine,
+        category: getValueFromTextBlock(block, [
+          "kategoriya",
+          "category",
+          "категория",
+        ]),
+        meaning: getValueFromTextBlock(block, [
+          "ma’nosi",
+          "manosi",
+          "meaning",
+          "definition",
+          "значение",
+          "изоҳ",
+          "izoh",
+        ]),
+        example: getValueFromTextBlock(block, ["misol", "example", "пример"]),
+        source: getValueFromTextBlock(block, ["manba", "source", "источник"]),
+        appearance_year: getValueFromTextBlock(block, [
+          "yil",
+          "year",
+          "appearance_year",
+          "год",
+        ]),
+      };
+
+      return normalizeImportedWord(raw);
+    });
+  }
+
+  function parseDocWords(text: string): WordForm[] {
+    const parser = new DOMParser();
+    const documentHtml = parser.parseFromString(text, "text/html");
+    const items = Array.from(
+      documentHtml.querySelectorAll(".word-export-item")
+    );
+
+    if (items.length > 0) {
+      return items.map((item) =>
+        normalizeImportedWord({
+          title: item.getAttribute("data-title") || "",
+          category: item.getAttribute("data-category") || "",
+          meaning: item.getAttribute("data-meaning") || "",
+          example: item.getAttribute("data-example") || "",
+          source: item.getAttribute("data-source") || "",
+          appearance_year: item.getAttribute("data-appearance-year") || "",
+        })
+      );
+    }
+
+    return parseTxtWords(documentHtml.body?.innerText || text);
+  }
+
+  function parseWordsByFileType(fileName: string, text: string): WordForm[] {
+    const lowerName = fileName.toLowerCase();
+
+    if (
+      lowerName.endsWith(".doc") ||
+      lowerName.endsWith(".html") ||
+      lowerName.endsWith(".htm")
+    ) {
+      return parseDocWords(text);
+    }
+
+    return [];
   }
 
   async function importWordsFromFile(event: ChangeEvent<HTMLInputElement>) {
@@ -429,8 +630,14 @@ export default function AdminPage() {
 
     if (!file) return;
 
-    if (!file.name.toLowerCase().endsWith(".json")) {
-      setMessage(t.importOnlyJson);
+    const lowerName = file.name.toLowerCase();
+
+    if (
+      !lowerName.endsWith(".doc") &&
+      !lowerName.endsWith(".html") &&
+      !lowerName.endsWith(".htm")
+    ) {
+      setMessage(t.importOnlyWord);
       event.target.value = "";
       return;
     }
@@ -439,19 +646,7 @@ export default function AdminPage() {
 
     try {
       const fileText = await file.text();
-      const parsed = JSON.parse(fileText) as unknown;
-
-      let items: unknown[] = [];
-
-      if (Array.isArray(parsed)) {
-        items = parsed;
-      } else if (
-        parsed &&
-        typeof parsed === "object" &&
-        Array.isArray((parsed as { words?: unknown }).words)
-      ) {
-        items = (parsed as { words: unknown[] }).words;
-      }
+      const items = parseWordsByFileType(file.name, fileText);
 
       if (items.length === 0) {
         setMessage(t.importEmpty);
@@ -463,25 +658,7 @@ export default function AdminPage() {
       let successCount = 0;
       let errorCount = 0;
 
-      for (const item of items) {
-        if (!item || typeof item !== "object") {
-          errorCount += 1;
-          continue;
-        }
-
-        const raw = item as Record<string, unknown>;
-
-        const importedWord: WordForm = {
-          title: valueToString(raw.title ?? raw.word).trim(),
-          category: valueToString(raw.category ?? raw.category_id).trim(),
-          meaning: valueToString(raw.meaning ?? raw.definition).trim(),
-          example: valueToString(raw.example).trim(),
-          source: valueToString(raw.source).trim(),
-          appearance_year: valueToString(
-            raw.appearance_year ?? raw.appearanceYear ?? raw.year
-          ).trim(),
-        };
-
+      for (const importedWord of items) {
         if (
           !importedWord.title ||
           !importedWord.category ||
@@ -820,7 +997,7 @@ export default function AdminPage() {
 
             <button
               type="button"
-              onClick={exportWords}
+              onClick={exportWordsDoc}
               disabled={loading}
               className="rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
             >
@@ -839,7 +1016,7 @@ export default function AdminPage() {
             <input
               ref={importInputRef}
               type="file"
-              accept=".json,application/json"
+              accept=".doc,.html,.htm,application/msword,text/html"
               onChange={importWordsFromFile}
               className="hidden"
             />
@@ -1122,7 +1299,7 @@ export default function AdminPage() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={exportWords}
+                    onClick={exportWordsDoc}
                     disabled={loading}
                     className="rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
                   >
