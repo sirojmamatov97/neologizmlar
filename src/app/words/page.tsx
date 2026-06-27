@@ -1,22 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-
-type Category = {
-  id: string;
-  name: string;
-};
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 
 type WordItem = {
   id: string;
-  word: string;
+  title: string;
   slug: string;
-  definition: string | null;
+  category: string;
+  meaning: string;
   example: string | null;
+  source: string | null;
   appearance_year: number | null;
-  category_id: string | null;
-  categories: Category | Category[] | null;
 };
 
 const alphabet = [
@@ -50,14 +45,6 @@ const alphabet = [
   "Ch",
 ];
 
-function getCategoryName(categories: WordItem["categories"]) {
-  if (!categories) return "";
-  if (Array.isArray(categories)) {
-    return categories[0]?.name || "";
-  }
-  return categories.name || "";
-}
-
 function normalizeText(text: string) {
   return text
     .toLowerCase()
@@ -73,9 +60,14 @@ function startsWithLetter(word: string, letter: string) {
   return normalizedWord.startsWith(normalizedLetter);
 }
 
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b)
+  );
+}
+
 export default function WordsPage() {
   const [words, setWords] = useState<WordItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -95,13 +87,19 @@ export default function WordsPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data?.error || "Ma’lumotlarni yuklashda xatolik");
+          throw new Error(data?.message || "Ma’lumotlarni yuklashda xatolik");
         }
 
-        setWords(data.words || []);
-        setCategories(data.categories || []);
+        if (Array.isArray(data)) {
+          setWords(data);
+        } else if (Array.isArray(data.words)) {
+          setWords(data.words);
+        } else {
+          setWords([]);
+        }
       } catch (error) {
         console.error(error);
+        setWords([]);
       } finally {
         setLoading(false);
       }
@@ -120,29 +118,33 @@ export default function WordsPage() {
     );
   }, []);
 
+  const categories = useMemo(() => {
+    return uniqueValues(words.map((item) => item.category || ""));
+  }, [words]);
+
   const filteredWords = useMemo(() => {
     return words.filter((item) => {
-      const word = item.word || "";
-      const definition = item.definition || "";
-      const categoryName = getCategoryName(item.categories);
+      const title = item.title || "";
+      const meaning = item.meaning || "";
+      const category = item.category || "";
 
       const searchText = normalizeText(search);
 
       const matchesSearch =
         !searchText ||
-        normalizeText(word).includes(searchText) ||
-        normalizeText(definition).includes(searchText) ||
-        normalizeText(categoryName).includes(searchText);
+        normalizeText(title).includes(searchText) ||
+        normalizeText(meaning).includes(searchText) ||
+        normalizeText(category).includes(searchText);
 
       const matchesLetter =
-        selectedLetter === "all" || startsWithLetter(word, selectedLetter);
+        selectedLetter === "all" || startsWithLetter(title, selectedLetter);
 
       const matchesYear =
         selectedYear === "all" ||
         Number(item.appearance_year) === Number(selectedYear);
 
       const matchesCategory =
-        selectedCategory === "all" || item.category_id === selectedCategory;
+        selectedCategory === "all" || category === selectedCategory;
 
       return matchesSearch && matchesLetter && matchesYear && matchesCategory;
     });
@@ -178,7 +180,7 @@ export default function WordsPage() {
             style={styles.searchInput}
           />
 
-          <button onClick={resetFilters} style={styles.resetButton}>
+          <button type="button" onClick={resetFilters} style={styles.resetButton}>
             Tozalash
           </button>
         </div>
@@ -188,6 +190,7 @@ export default function WordsPage() {
 
           <div style={styles.buttonGroup}>
             <button
+              type="button"
               onClick={() => setSelectedLetter("all")}
               style={{
                 ...styles.filterButton,
@@ -199,6 +202,7 @@ export default function WordsPage() {
 
             {alphabet.map((letter) => (
               <button
+                type="button"
                 key={letter}
                 onClick={() => setSelectedLetter(letter)}
                 style={{
@@ -217,6 +221,7 @@ export default function WordsPage() {
 
           <div style={styles.buttonGroup}>
             <button
+              type="button"
               onClick={() => setSelectedYear("all")}
               style={{
                 ...styles.filterButton,
@@ -228,6 +233,7 @@ export default function WordsPage() {
 
             {years.map((year) => (
               <button
+                type="button"
                 key={year}
                 onClick={() => setSelectedYear(String(year))}
                 style={{
@@ -246,6 +252,7 @@ export default function WordsPage() {
 
           <div style={styles.buttonGroup}>
             <button
+              type="button"
               onClick={() => setSelectedCategory("all")}
               style={{
                 ...styles.filterButton,
@@ -257,16 +264,15 @@ export default function WordsPage() {
 
             {categories.map((category) => (
               <button
-                key={category.id}
-                onClick={() => setSelectedCategory(category.id)}
+                type="button"
+                key={category}
+                onClick={() => setSelectedCategory(category)}
                 style={{
                   ...styles.filterButton,
-                  ...(selectedCategory === category.id
-                    ? styles.activeButton
-                    : {}),
+                  ...(selectedCategory === category ? styles.activeButton : {}),
                 }}
               >
-                {category.name}
+                {category}
               </button>
             ))}
           </div>
@@ -287,46 +293,36 @@ export default function WordsPage() {
         </div>
       ) : (
         <section style={styles.grid}>
-          {filteredWords.map((item) => {
-            const categoryName = getCategoryName(item.categories);
+          {filteredWords.map((item) => (
+            <Link key={item.id} href={`/words/${item.slug}`} style={styles.card}>
+              <div style={styles.cardTop}>
+                <h2 style={styles.wordTitle}>{item.title}</h2>
 
-            return (
-              <Link
-                key={item.id}
-                href={`/words/${item.slug}`}
-                style={styles.card}
-              >
-                <div style={styles.cardTop}>
-                  <h2 style={styles.wordTitle}>{item.word}</h2>
-
-                  {item.appearance_year ? (
-                    <span style={styles.yearBadge}>
-                      {item.appearance_year}
-                    </span>
-                  ) : null}
-                </div>
-
-                {categoryName ? (
-                  <span style={styles.categoryBadge}>{categoryName}</span>
+                {item.appearance_year ? (
+                  <span style={styles.yearBadge}>{item.appearance_year}</span>
                 ) : null}
+              </div>
 
-                {item.definition ? (
-                  <p style={styles.definition}>{item.definition}</p>
-                ) : (
-                  <p style={styles.definitionMuted}>Izoh kiritilmagan</p>
-                )}
+              {item.category ? (
+                <span style={styles.categoryBadge}>{item.category}</span>
+              ) : null}
 
-                <span style={styles.more}>Batafsil →</span>
-              </Link>
-            );
-          })}
+              {item.meaning ? (
+                <p style={styles.definition}>{item.meaning}</p>
+              ) : (
+                <p style={styles.definitionMuted}>Izoh kiritilmagan</p>
+              )}
+
+              <span style={styles.more}>Batafsil →</span>
+            </Link>
+          ))}
         </section>
       )}
     </main>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: "100vh",
     background: "#f7f8fb",
