@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 type AdminLang = "uz" | "ru";
 
@@ -11,6 +11,7 @@ type Word = {
   meaning: string;
   example?: string | null;
   source?: string | null;
+  appearance_year?: number | null;
   slug: string;
 };
 
@@ -27,6 +28,7 @@ type WordForm = {
   meaning: string;
   example: string;
   source: string;
+  appearance_year: string;
 };
 
 type CategoryForm = {
@@ -39,6 +41,7 @@ const emptyWordForm: WordForm = {
   meaning: "",
   example: "",
   source: "",
+  appearance_year: "",
 };
 
 const emptyCategoryForm: CategoryForm = {
@@ -57,6 +60,14 @@ const texts = {
     viewDictionary: "Lug‘atni ko‘rish",
     logout: "Chiqish",
 
+    exportWords: "So‘zlarni eksport qilish",
+    importWords: "So‘zlarni import qilish",
+    importOnlyJson: "Faqat JSON fayl tanlang",
+    importEmpty: "Import uchun so‘zlar topilmadi",
+    exportDone: "So‘zlar eksport qilindi",
+    importDone: "Import yakunlandi",
+    importError: "Import qilishda xatolik",
+
     addWord: "Yangi so‘z qo‘shish",
     editWord: "So‘zni tahrirlash",
     word: "So‘z",
@@ -69,6 +80,8 @@ const texts = {
     examplePlaceholder: "Misol gap...",
     source: "Manba",
     sourcePlaceholder: "Masalan: Ijtimoiy tarmoq nutqi",
+    appearanceYear: "Paydo bo‘lgan yili",
+    appearanceYearPlaceholder: "Masalan: 2024",
     add: "Qo‘shish",
     update: "Yangilash",
     cancel: "Bekor qilish",
@@ -121,6 +134,14 @@ const texts = {
     viewDictionary: "Открыть словарь",
     logout: "Выйти",
 
+    exportWords: "Экспорт слов",
+    importWords: "Импорт слов",
+    importOnlyJson: "Выберите только JSON-файл",
+    importEmpty: "Слова для импорта не найдены",
+    exportDone: "Слова экспортированы",
+    importDone: "Импорт завершён",
+    importError: "Ошибка импорта",
+
     addWord: "Добавить новое слово",
     editWord: "Редактировать слово",
     word: "Слово",
@@ -133,6 +154,8 @@ const texts = {
     examplePlaceholder: "Пример предложения...",
     source: "Источник",
     sourcePlaceholder: "Например: речь социальных сетей",
+    appearanceYear: "Год появления",
+    appearanceYearPlaceholder: "Например: 2024",
     add: "Добавить",
     update: "Обновить",
     cancel: "Отмена",
@@ -176,9 +199,21 @@ const texts = {
   },
 };
 
+function valueToString(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function makeExportFileName() {
+  const date = new Date().toISOString().slice(0, 10);
+  return `neologizmlar-words-${date}.json`;
+}
+
 export default function AdminPage() {
   const [adminLang, setAdminLang] = useState<AdminLang>("uz");
   const t = texts[adminLang];
+
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const [password, setPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -357,6 +392,137 @@ export default function AdminPage() {
     }));
   }
 
+  function exportWords() {
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      total: words.length,
+      words: words.map((word) => ({
+        title: word.title,
+        category: word.category,
+        meaning: word.meaning,
+        example: word.example || "",
+        source: word.source || "",
+        appearance_year: word.appearance_year || null,
+        slug: word.slug,
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = makeExportFileName();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+    setMessage(t.exportDone);
+  }
+
+  async function importWordsFromFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".json")) {
+      setMessage(t.importOnlyJson);
+      event.target.value = "";
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const fileText = await file.text();
+      const parsed = JSON.parse(fileText) as unknown;
+
+      let items: unknown[] = [];
+
+      if (Array.isArray(parsed)) {
+        items = parsed;
+      } else if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { words?: unknown }).words)
+      ) {
+        items = (parsed as { words: unknown[] }).words;
+      }
+
+      if (items.length === 0) {
+        setMessage(t.importEmpty);
+        setLoading(false);
+        event.target.value = "";
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const item of items) {
+        if (!item || typeof item !== "object") {
+          errorCount += 1;
+          continue;
+        }
+
+        const raw = item as Record<string, unknown>;
+
+        const importedWord: WordForm = {
+          title: valueToString(raw.title ?? raw.word).trim(),
+          category: valueToString(raw.category ?? raw.category_id).trim(),
+          meaning: valueToString(raw.meaning ?? raw.definition).trim(),
+          example: valueToString(raw.example).trim(),
+          source: valueToString(raw.source).trim(),
+          appearance_year: valueToString(
+            raw.appearance_year ?? raw.appearanceYear ?? raw.year
+          ).trim(),
+        };
+
+        if (
+          !importedWord.title ||
+          !importedWord.category ||
+          !importedWord.meaning
+        ) {
+          errorCount += 1;
+          continue;
+        }
+
+        const response = await fetch("/api/admin/words", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-password": password,
+          },
+          body: JSON.stringify(importedWord),
+        });
+
+        if (response.ok) {
+          successCount += 1;
+        } else {
+          errorCount += 1;
+        }
+      }
+
+      await loadWords(password, false);
+
+      setMessage(
+        adminLang === "uz"
+          ? `${t.importDone}: ${successCount} ta qo‘shildi, ${errorCount} ta xato`
+          : `${t.importDone}: добавлено ${successCount}, ошибок ${errorCount}`
+      );
+    } catch (error) {
+      console.error(error);
+      setMessage(t.importError);
+    } finally {
+      setLoading(false);
+      event.target.value = "";
+    }
+  }
+
   async function saveWord() {
     if (
       !wordForm.title.trim() ||
@@ -412,6 +578,7 @@ export default function AdminPage() {
       meaning: word.meaning,
       example: word.example || "",
       source: word.source || "",
+      appearance_year: word.appearance_year ? String(word.appearance_year) : "",
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -615,21 +782,8 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <button
-        type="button"
-        onClick={logout}
-        style={{
-          backgroundColor: "#dc2626",
-          color: "white",
-          border: "none",
-        }}
-        className="fixed bottom-6 right-6 z-[9999] rounded-2xl px-5 py-3 text-sm font-bold shadow-xl"
-      >
-        {t.logout}
-      </button>
-
       <header className="sticky top-0 z-50 border-b bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5 pr-32">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
           <div>
             <h1 className="text-2xl font-bold text-blue-700">
               {t.adminTitle}
@@ -663,6 +817,32 @@ export default function AdminPage() {
                 RU
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={exportWords}
+              disabled={loading}
+              className="rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+            >
+              {t.exportWords}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              disabled={loading}
+              className="rounded-xl bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-60"
+            >
+              {t.importWords}
+            </button>
+
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={importWordsFromFile}
+              className="hidden"
+            />
 
             <a
               href="/words"
@@ -779,6 +959,23 @@ export default function AdminPage() {
                       updateWordForm("source", event.target.value)
                     }
                     placeholder={t.sourcePlaceholder}
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    {t.appearanceYear}
+                  </label>
+                  <input
+                    type="number"
+                    min="2015"
+                    max="2050"
+                    value={wordForm.appearance_year}
+                    onChange={(event) =>
+                      updateWordForm("appearance_year", event.target.value)
+                    }
+                    placeholder={t.appearanceYearPlaceholder}
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
                   />
                 </div>
@@ -914,7 +1111,7 @@ export default function AdminPage() {
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-5 flex items-center justify-between gap-4">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-bold">{t.wordsList}</h2>
                   <p className="text-sm text-slate-500">
@@ -922,13 +1119,33 @@ export default function AdminPage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => loadWords()}
-                  className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
-                >
-                  {t.refresh}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={exportWords}
+                    disabled={loading}
+                    className="rounded-xl bg-emerald-100 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+                  >
+                    {t.exportWords}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => importInputRef.current?.click()}
+                    disabled={loading}
+                    className="rounded-xl bg-purple-100 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-200 disabled:opacity-60"
+                  >
+                    {t.importWords}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadWords()}
+                    className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                  >
+                    {t.refresh}
+                  </button>
+                </div>
               </div>
 
               {loading ? (
@@ -978,6 +1195,12 @@ export default function AdminPage() {
                       {word.example && (
                         <p className="mb-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
                           <b>{t.example}:</b> {word.example}
+                        </p>
+                      )}
+
+                      {word.appearance_year && (
+                        <p className="mb-2 text-sm text-slate-500">
+                          <b>{t.appearanceYear}:</b> {word.appearance_year}
                         </p>
                       )}
 

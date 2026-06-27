@@ -1,34 +1,31 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
 
-type Word = {
-  id?: string;
-  title: string;
-  category: string;
-  meaning: string;
-  example?: string | null;
-  source?: string | null;
-  slug: string;
+type Category = {
+  id: string;
+  name: string;
 };
 
-type CategoryItem = {
+type WordItem = {
   id: string;
-  value: string;
-  uz: string;
-  ru?: string | null;
+  word: string;
+  slug: string;
+  definition: string | null;
+  example: string | null;
+  appearance_year: number | null;
+  category_id: string | null;
+  categories: Category | Category[] | null;
 };
 
 const alphabet = [
-  "Barchasi",
   "A",
   "B",
   "D",
   "E",
   "F",
   "G",
-  "G‘",
   "H",
   "I",
   "J",
@@ -37,7 +34,6 @@ const alphabet = [
   "M",
   "N",
   "O",
-  "O‘",
   "P",
   "Q",
   "R",
@@ -48,239 +44,167 @@ const alphabet = [
   "X",
   "Y",
   "Z",
+  "O‘",
+  "G‘",
   "Sh",
   "Ch",
 ];
 
-function normalizeText(value: string | null | undefined) {
-  return (value || "")
+function getCategoryName(categories: WordItem["categories"]) {
+  if (!categories) return "";
+  if (Array.isArray(categories)) {
+    return categories[0]?.name || "";
+  }
+  return categories.name || "";
+}
+
+function normalizeText(text: string) {
+  return text
     .toLowerCase()
-    .replaceAll("’", "'")
-    .replaceAll("‘", "'")
-    .replaceAll("ʻ", "'")
+    .replaceAll("'", "‘")
+    .replaceAll("ʼ", "‘")
     .trim();
 }
 
-function getFirstLetter(title: string) {
-  const word = normalizeText(title);
+function startsWithLetter(word: string, letter: string) {
+  const normalizedWord = normalizeText(word);
+  const normalizedLetter = normalizeText(letter);
 
-  if (word.startsWith("o'") || word.startsWith("o‘")) return "O‘";
-  if (word.startsWith("g'") || word.startsWith("g‘")) return "G‘";
-  if (word.startsWith("sh")) return "Sh";
-  if (word.startsWith("ch")) return "Ch";
-
-  return word.charAt(0).toUpperCase();
+  return normalizedWord.startsWith(normalizedLetter);
 }
 
 export default function WordsPage() {
-  const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState("Barchasi");
-  const [activeLetter, setActiveLetter] = useState("Barchasi");
-
-  const [words, setWords] = useState<Word[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [words, setWords] = useState<WordItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorText, setErrorText] = useState("");
+
+  const [search, setSearch] = useState("");
+  const [selectedLetter, setSelectedLetter] = useState("all");
+  const [selectedYear, setSelectedYear] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState("all");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const queryFromUrl = params.get("q");
+    async function loadWords() {
+      try {
+        setLoading(true);
 
-    if (queryFromUrl) {
-      setSearch(queryFromUrl);
-    }
-  }, []);
+        const response = await fetch("/api/words", {
+          cache: "no-store",
+        });
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      setErrorText("");
+        const data = await response.json();
 
-      const { data: wordsData, error: wordsError } = await supabase
-        .from("words")
-        .select("*")
-        .order("title", { ascending: true });
+        if (!response.ok) {
+          throw new Error(data?.error || "Ma’lumotlarni yuklashda xatolik");
+        }
 
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from("categories")
-        .select("*")
-        .order("uz", { ascending: true });
-
-      if (wordsError) {
-        console.error("Words error:", wordsError.message);
-        setErrorText("So‘zlarni yuklashda xatolik yuz berdi.");
+        setWords(data.words || []);
+        setCategories(data.categories || []);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
       }
-
-      if (categoriesError) {
-        console.error("Categories error:", categoriesError.message);
-      }
-
-      setWords((wordsData || []) as Word[]);
-      setCategories((categoriesData || []) as CategoryItem[]);
-      setLoading(false);
     }
 
-    loadData();
+    loadWords();
   }, []);
 
-  const categoryButtons = useMemo(() => {
-    const items = categories.map((category) => ({
-      value: category.value || category.uz,
-      label: category.uz || category.value,
-    }));
+  const years = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const startYear = 2015;
 
-    return [{ value: "Barchasi", label: "Barchasi" }, ...items];
-  }, [categories]);
-
-  function getCategoryLabel(value: string) {
-    const found = categories.find(
-      (category) => category.value === value || category.uz === value
+    return Array.from(
+      { length: currentYear - startYear + 1 },
+      (_, index) => currentYear - index
     );
-
-    return found?.uz || value;
-  }
+  }, []);
 
   const filteredWords = useMemo(() => {
-    const query = normalizeText(search);
+    return words.filter((item) => {
+      const word = item.word || "";
+      const definition = item.definition || "";
+      const categoryName = getCategoryName(item.categories);
 
-    return words.filter((word) => {
-      const title = normalizeText(word.title);
-      const meaning = normalizeText(word.meaning);
-      const category = normalizeText(word.category);
-      const example = normalizeText(word.example);
-      const source = normalizeText(word.source);
+      const searchText = normalizeText(search);
 
       const matchesSearch =
-        !query ||
-        title.includes(query) ||
-        meaning.includes(query) ||
-        category.includes(query) ||
-        example.includes(query) ||
-        source.includes(query);
-
-      const matchesCategory =
-        activeCategory === "Barchasi" || word.category === activeCategory;
+        !searchText ||
+        normalizeText(word).includes(searchText) ||
+        normalizeText(definition).includes(searchText) ||
+        normalizeText(categoryName).includes(searchText);
 
       const matchesLetter =
-        activeLetter === "Barchasi" ||
-        getFirstLetter(word.title) === activeLetter;
+        selectedLetter === "all" || startsWithLetter(word, selectedLetter);
 
-      return matchesSearch && matchesCategory && matchesLetter;
+      const matchesYear =
+        selectedYear === "all" ||
+        Number(item.appearance_year) === Number(selectedYear);
+
+      const matchesCategory =
+        selectedCategory === "all" || item.category_id === selectedCategory;
+
+      return matchesSearch && matchesLetter && matchesYear && matchesCategory;
     });
-  }, [search, activeCategory, activeLetter, words]);
+  }, [words, search, selectedLetter, selectedYear, selectedCategory]);
 
   function resetFilters() {
     setSearch("");
-    setActiveCategory("Barchasi");
-    setActiveLetter("Barchasi");
-
-    const cleanUrl = window.location.pathname;
-    window.history.replaceState({}, "", cleanUrl);
+    setSelectedLetter("all");
+    setSelectedYear("all");
+    setSelectedCategory("all");
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <a href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white">
-              📖
-            </div>
+    <main style={styles.page}>
+      <section style={styles.hero}>
+        <Link href="/" style={styles.backLink}>
+          ← Bosh sahifa
+        </Link>
 
-            <div>
-              <h1 className="text-xl font-bold">neologizmlar.uz</h1>
-              <p className="text-sm text-slate-500">
-                Elektron neologizmlar lug‘ati
-              </p>
-            </div>
-          </a>
+        <h1 style={styles.title}>Neologizmlar lug‘ati</h1>
 
-          <a
-            href="/"
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Bosh sahifa
-          </a>
-        </div>
-      </header>
-
-      <section className="border-b bg-gradient-to-b from-white to-blue-50">
-        <div className="mx-auto max-w-5xl px-6 py-16 text-center">
-          <h2 className="mb-5 text-4xl font-bold text-slate-950 md:text-5xl">
-            Neologizmlar lug‘ati
-          </h2>
-
-          <p className="mx-auto mb-8 max-w-2xl text-lg leading-8 text-slate-600">
-            Yangi so‘zlar, ularning ma’nosi, qo‘llanish sohasi va misollarini
-            shu sahifadan topishingiz mumkin.
-          </p>
-
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-3xl bg-white p-3 shadow-lg sm:flex-row sm:items-center">
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="So‘z kiriting, masalan: layk, bloger, strim..."
-              className="w-full bg-transparent px-5 py-4 outline-none"
-            />
-
-            {(search ||
-              activeCategory !== "Barchasi" ||
-              activeLetter !== "Barchasi") && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-200"
-              >
-                Tozalash
-              </button>
-            )}
-          </div>
-        </div>
+        <p style={styles.subtitle}>
+          So‘zlarni harf, yil va kategoriya bo‘yicha saralash imkoniyati.
+        </p>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 py-10">
-        {errorText && (
-          <div className="mb-8 rounded-3xl border border-red-200 bg-red-50 p-5 text-red-700">
-            {errorText}
-          </div>
-        )}
+      <section style={styles.filtersBox}>
+        <div style={styles.searchRow}>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="So‘z, izoh yoki kategoriya bo‘yicha qidirish..."
+            style={styles.searchInput}
+          />
 
-        <div className="mb-8">
-          <h3 className="mb-4 text-xl font-bold">Kategoriyalar</h3>
-
-          <div className="flex flex-wrap gap-3">
-            {categoryButtons.map((category) => (
-              <button
-                key={category.value}
-                type="button"
-                onClick={() => setActiveCategory(category.value)}
-                className={`rounded-full border px-5 py-3 text-sm font-medium shadow-sm ${
-                  activeCategory === category.value
-                    ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-400 hover:text-blue-600"
-                }`}
-              >
-                {category.label}
-              </button>
-            ))}
-          </div>
+          <button onClick={resetFilters} style={styles.resetButton}>
+            Tozalash
+          </button>
         </div>
 
-        <div className="mb-10">
-          <h3 className="mb-4 text-xl font-bold">Alfavit bo‘yicha</h3>
+        <div style={styles.filterBlock}>
+          <h3 style={styles.filterTitle}>Harf bo‘yicha</h3>
 
-          <div className="flex flex-wrap gap-2">
+          <div style={styles.buttonGroup}>
+            <button
+              onClick={() => setSelectedLetter("all")}
+              style={{
+                ...styles.filterButton,
+                ...(selectedLetter === "all" ? styles.activeButton : {}),
+              }}
+            >
+              Barchasi
+            </button>
+
             {alphabet.map((letter) => (
               <button
                 key={letter}
-                type="button"
-                onClick={() => setActiveLetter(letter)}
-                className={`rounded-xl border px-4 py-2 text-sm font-medium shadow-sm ${
-                  activeLetter === letter
-                    ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-400 hover:text-blue-600"
-                }`}
+                onClick={() => setSelectedLetter(letter)}
+                style={{
+                  ...styles.filterButton,
+                  ...(selectedLetter === letter ? styles.activeButton : {}),
+                }}
               >
                 {letter}
               </button>
@@ -288,94 +212,331 @@ export default function WordsPage() {
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-bold">So‘zlar ro‘yxati</h2>
+        <div style={styles.filterBlock}>
+          <h3 style={styles.filterTitle}>Yil bo‘yicha</h3>
 
-            <p className="mt-2 text-sm text-slate-500">
-              Faol kategoriya:{" "}
-              <span className="font-medium text-slate-700">
-                {activeCategory === "Barchasi"
-                  ? "Barchasi"
-                  : getCategoryLabel(activeCategory)}
-              </span>{" "}
-              · Harf:{" "}
-              <span className="font-medium text-slate-700">
-                {activeLetter}
-              </span>
-            </p>
-          </div>
+          <div style={styles.buttonGroup}>
+            <button
+              onClick={() => setSelectedYear("all")}
+              style={{
+                ...styles.filterButton,
+                ...(selectedYear === "all" ? styles.activeButton : {}),
+              }}
+            >
+              Barchasi
+            </button>
 
-          <div className="rounded-2xl bg-white px-5 py-3 text-sm font-medium text-slate-600 shadow-sm">
-            Topilgan so‘zlar:{" "}
-            <span className="font-bold text-blue-700">
-              {filteredWords.length}
-            </span>
+            {years.map((year) => (
+              <button
+                key={year}
+                onClick={() => setSelectedYear(String(year))}
+                style={{
+                  ...styles.filterButton,
+                  ...(selectedYear === String(year) ? styles.activeButton : {}),
+                }}
+              >
+                {year}
+              </button>
+            ))}
           </div>
         </div>
 
-        {loading ? (
-          <div className="rounded-3xl bg-white p-10 text-center shadow-sm">
-            <p className="text-slate-600">Yuklanmoqda...</p>
-          </div>
-        ) : filteredWords.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2">
-            {filteredWords.map((word) => (
-              <a
-                key={word.id || word.slug}
-                href={`/words/${encodeURIComponent(word.slug)}`}
-                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+        <div style={styles.filterBlock}>
+          <h3 style={styles.filterTitle}>Kategoriya bo‘yicha</h3>
+
+          <div style={styles.buttonGroup}>
+            <button
+              onClick={() => setSelectedCategory("all")}
+              style={{
+                ...styles.filterButton,
+                ...(selectedCategory === "all" ? styles.activeButton : {}),
+              }}
+            >
+              Barchasi
+            </button>
+
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                onClick={() => setSelectedCategory(category.id)}
+                style={{
+                  ...styles.filterButton,
+                  ...(selectedCategory === category.id
+                    ? styles.activeButton
+                    : {}),
+                }}
               >
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-2xl font-bold text-blue-700">
-                    {word.title}
-                  </h3>
-
-                  <span className="rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-700">
-                    {getCategoryLabel(word.category)}
-                  </span>
-                </div>
-
-                <p className="mb-5 leading-8 text-slate-700">
-                  {word.meaning}
-                </p>
-
-                {word.example && (
-                  <p className="mb-4 rounded-2xl bg-slate-50 p-4 text-sm leading-7 text-slate-600">
-                    <b>Misol:</b> {word.example}
-                  </p>
-                )}
-
-                {word.source && (
-                  <p className="text-sm text-slate-500">
-                    <b>Manba:</b> {word.source}
-                  </p>
-                )}
-
-                <p className="mt-5 font-medium text-blue-600">
-                  Batafsil o‘qish →
-                </p>
-              </a>
+                {category.name}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="mt-10 rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
-            <h3 className="mb-3 text-2xl font-bold">So‘z topilmadi</h3>
-            <p className="text-slate-600">
-              Boshqa so‘z yozib ko‘ring, kategoriyani o‘zgartiring yoki boshqa
-              harfni tanlang.
-            </p>
-
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="mt-6 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Filtrlarni tozalash
-            </button>
-          </div>
-        )}
+        </div>
       </section>
+
+      <section style={styles.resultHeader}>
+        <p style={styles.resultCount}>
+          Topildi: <b>{filteredWords.length}</b> ta so‘z
+        </p>
+      </section>
+
+      {loading ? (
+        <div style={styles.emptyBox}>Yuklanmoqda...</div>
+      ) : filteredWords.length === 0 ? (
+        <div style={styles.emptyBox}>
+          Tanlangan filtrlar bo‘yicha so‘z topilmadi.
+        </div>
+      ) : (
+        <section style={styles.grid}>
+          {filteredWords.map((item) => {
+            const categoryName = getCategoryName(item.categories);
+
+            return (
+              <Link
+                key={item.id}
+                href={`/words/${item.slug}`}
+                style={styles.card}
+              >
+                <div style={styles.cardTop}>
+                  <h2 style={styles.wordTitle}>{item.word}</h2>
+
+                  {item.appearance_year ? (
+                    <span style={styles.yearBadge}>
+                      {item.appearance_year}
+                    </span>
+                  ) : null}
+                </div>
+
+                {categoryName ? (
+                  <span style={styles.categoryBadge}>{categoryName}</span>
+                ) : null}
+
+                {item.definition ? (
+                  <p style={styles.definition}>{item.definition}</p>
+                ) : (
+                  <p style={styles.definitionMuted}>Izoh kiritilmagan</p>
+                )}
+
+                <span style={styles.more}>Batafsil →</span>
+              </Link>
+            );
+          })}
+        </section>
+      )}
     </main>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#f7f8fb",
+    padding: "32px 18px 60px",
+    color: "#172033",
+  },
+
+  hero: {
+    maxWidth: 1120,
+    margin: "0 auto 22px",
+  },
+
+  backLink: {
+    display: "inline-block",
+    marginBottom: 18,
+    color: "#2563eb",
+    textDecoration: "none",
+    fontSize: 15,
+    fontWeight: 600,
+  },
+
+  title: {
+    margin: 0,
+    fontSize: 42,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+  },
+
+  subtitle: {
+    marginTop: 12,
+    marginBottom: 0,
+    fontSize: 17,
+    color: "#667085",
+    maxWidth: 680,
+    lineHeight: 1.6,
+  },
+
+  filtersBox: {
+    maxWidth: 1120,
+    margin: "0 auto",
+    background: "#ffffff",
+    border: "1px solid #e6e9f0",
+    borderRadius: 22,
+    padding: 20,
+    boxShadow: "0 12px 35px rgba(15, 23, 42, 0.06)",
+  },
+
+  searchRow: {
+    display: "flex",
+    gap: 12,
+    marginBottom: 18,
+    flexWrap: "wrap",
+  },
+
+  searchInput: {
+    flex: "1 1 320px",
+    border: "1px solid #d8deea",
+    borderRadius: 14,
+    padding: "14px 16px",
+    fontSize: 15,
+    outline: "none",
+    background: "#fbfcff",
+  },
+
+  resetButton: {
+    border: "none",
+    borderRadius: 14,
+    padding: "14px 18px",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+    background: "#172033",
+    color: "#ffffff",
+  },
+
+  filterBlock: {
+    marginTop: 18,
+  },
+
+  filterTitle: {
+    margin: "0 0 10px",
+    fontSize: 16,
+    fontWeight: 800,
+  },
+
+  buttonGroup: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  filterButton: {
+    border: "1px solid #d8deea",
+    background: "#ffffff",
+    color: "#344054",
+    borderRadius: 999,
+    padding: "9px 13px",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+
+  activeButton: {
+    background: "#2563eb",
+    borderColor: "#2563eb",
+    color: "#ffffff",
+  },
+
+  resultHeader: {
+    maxWidth: 1120,
+    margin: "22px auto 12px",
+  },
+
+  resultCount: {
+    margin: 0,
+    color: "#475467",
+    fontSize: 15,
+  },
+
+  grid: {
+    maxWidth: 1120,
+    margin: "0 auto",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+    gap: 16,
+  },
+
+  card: {
+    display: "block",
+    background: "#ffffff",
+    border: "1px solid #e6e9f0",
+    borderRadius: 20,
+    padding: 18,
+    textDecoration: "none",
+    color: "#172033",
+    boxShadow: "0 10px 25px rgba(15, 23, 42, 0.04)",
+    transition: "0.2s ease",
+  },
+
+  cardTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  wordTitle: {
+    margin: 0,
+    fontSize: 23,
+    lineHeight: 1.2,
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+  },
+
+  yearBadge: {
+    flexShrink: 0,
+    borderRadius: 999,
+    padding: "6px 10px",
+    background: "#eff6ff",
+    color: "#2563eb",
+    fontSize: 13,
+    fontWeight: 800,
+  },
+
+  categoryBadge: {
+    display: "inline-block",
+    marginBottom: 12,
+    borderRadius: 999,
+    padding: "6px 10px",
+    background: "#f2f4f7",
+    color: "#475467",
+    fontSize: 13,
+    fontWeight: 700,
+  },
+
+  definition: {
+    margin: "0 0 14px",
+    color: "#475467",
+    fontSize: 15,
+    lineHeight: 1.55,
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+
+  definitionMuted: {
+    margin: "0 0 14px",
+    color: "#98a2b3",
+    fontSize: 15,
+    lineHeight: 1.55,
+  },
+
+  more: {
+    color: "#2563eb",
+    fontSize: 14,
+    fontWeight: 800,
+  },
+
+  emptyBox: {
+    maxWidth: 1120,
+    margin: "0 auto",
+    background: "#ffffff",
+    border: "1px solid #e6e9f0",
+    borderRadius: 20,
+    padding: 28,
+    color: "#667085",
+    textAlign: "center",
+    fontSize: 16,
+  },
+};

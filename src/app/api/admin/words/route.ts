@@ -1,139 +1,63 @@
-import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-function createSlug(title: string) {
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/['’`]/g, "")
-    .replace(/\s+/g, "-");
-}
+export const dynamic = "force-dynamic";
 
-function checkAdmin(request: NextRequest) {
-  const password = request.headers.get("x-admin-password");
-  return password && password === process.env.ADMIN_PASSWORD;
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export async function GET(request: NextRequest) {
-  if (!checkAdmin(request)) {
-    return NextResponse.json({ message: "Ruxsat yo‘q" }, { status: 401 });
-  }
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-  const { data, error } = await supabaseAdmin
-    .from("words")
-    .select("*")
-    .order("created_at", { ascending: false });
+export async function GET() {
+  try {
+    const { data: words, error: wordsError } = await supabase
+      .from("words")
+      .select(`
+        id,
+        word,
+        slug,
+        definition,
+        example,
+        appearance_year,
+        category_id,
+        categories (
+          id,
+          name
+        )
+      `)
+      .order("word", { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
+    if (wordsError) {
+      console.error("Words API error:", wordsError);
+      return NextResponse.json(
+        { error: "So‘zlarni yuklashda xatolik yuz berdi" },
+        { status: 500 }
+      );
+    }
 
-  return NextResponse.json(data);
-}
+    const { data: categories, error: categoriesError } = await supabase
+      .from("categories")
+      .select("id, name")
+      .order("name", { ascending: true });
 
-export async function POST(request: NextRequest) {
-  if (!checkAdmin(request)) {
-    return NextResponse.json({ message: "Ruxsat yo‘q" }, { status: 401 });
-  }
+    if (categoriesError) {
+      console.error("Categories API error:", categoriesError);
+      return NextResponse.json(
+        { error: "Kategoriyalarni yuklashda xatolik yuz berdi" },
+        { status: 500 }
+      );
+    }
 
-  const body = await request.json();
+    return NextResponse.json({
+      words: words || [],
+      categories: categories || [],
+    });
+  } catch (error) {
+    console.error("Public words API error:", error);
 
-  const title = String(body.title || "").trim();
-  const category = String(body.category || "").trim();
-  const meaning = String(body.meaning || "").trim();
-  const example = String(body.example || "").trim();
-  const source = String(body.source || "").trim();
-
-  if (!title || !category || !meaning) {
     return NextResponse.json(
-      { message: "So‘z, kategoriya va ma’no majburiy" },
-      { status: 400 }
+      { error: "Server xatosi" },
+      { status: 500 }
     );
   }
-
-  const slug = createSlug(title);
-
-  const { data, error } = await supabaseAdmin
-    .from("words")
-    .insert({
-      title,
-      category,
-      meaning,
-      example: example || null,
-      source: source || null,
-      slug,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
-}
-
-export async function PUT(request: NextRequest) {
-  if (!checkAdmin(request)) {
-    return NextResponse.json({ message: "Ruxsat yo‘q" }, { status: 401 });
-  }
-
-  const body = await request.json();
-
-  const id = String(body.id || "").trim();
-  const title = String(body.title || "").trim();
-  const category = String(body.category || "").trim();
-  const meaning = String(body.meaning || "").trim();
-  const example = String(body.example || "").trim();
-  const source = String(body.source || "").trim();
-
-  if (!id || !title || !category || !meaning) {
-    return NextResponse.json(
-      { message: "ID, so‘z, kategoriya va ma’no majburiy" },
-      { status: 400 }
-    );
-  }
-
-  const slug = createSlug(title);
-
-  const { data, error } = await supabaseAdmin
-    .from("words")
-    .update({
-      title,
-      category,
-      meaning,
-      example: example || null,
-      source: source || null,
-      slug,
-    })
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
-}
-
-export async function DELETE(request: NextRequest) {
-  if (!checkAdmin(request)) {
-    return NextResponse.json({ message: "Ruxsat yo‘q" }, { status: 401 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get("id");
-
-  if (!id) {
-    return NextResponse.json({ message: "ID kerak" }, { status: 400 });
-  }
-
-  const { error } = await supabaseAdmin.from("words").delete().eq("id", id);
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }
