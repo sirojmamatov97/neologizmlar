@@ -112,6 +112,9 @@ export default function HomePage() {
             <a href="#about" className="hover:text-blue-600">
               Qanday ishlaydi
             </a>
+            <a href="/about" className="hover:text-blue-600">
+              Loyiha haqida
+            </a>
           </nav>
         </div>
       </header>
@@ -317,8 +320,23 @@ export default function HomePage() {
       </section>
 
       <footer className="border-t bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-8 text-center text-sm text-slate-500">
-          © neologizmlar.uz — elektron neologizmlar lug‘ati
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-3 px-6 py-8 text-center text-sm text-slate-500">
+          <span>© 2026 neologizmlar.uz</span>
+
+          <span>·</span>
+
+          <a href="/about" className="font-semibold text-blue-600 hover:text-blue-700">
+            Loyiha haqida
+          </a>
+
+          <span>·</span>
+
+          <a
+            href="mailto:anechkavapayeva@gmail.com"
+            className="font-semibold text-blue-600 hover:text-blue-700"
+          >
+            anechkavapayeva@gmail.com
+          </a>
         </div>
       </footer>
     </main>
