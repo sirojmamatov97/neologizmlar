@@ -1,538 +1,344 @@
 "use client";
 
-import Link from "next/link";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
-type WordItem = {
-  id: string;
+type Word = {
+  id?: string | number;
   title: string;
-  slug: string;
   category: string;
   meaning: string;
-  example: string | null;
-  source: string | null;
-  appearance_year: number | null;
+  example?: string | null;
+  source?: string | null;
+  slug?: string | null;
 };
 
-const alphabet = [
-  "A",
-  "B",
-  "D",
-  "E",
-  "F",
-  "G",
-  "H",
-  "I",
-  "J",
-  "K",
-  "L",
-  "M",
-  "N",
-  "O",
-  "P",
-  "Q",
-  "R",
-  "S",
-  "T",
-  "U",
-  "V",
-  "X",
-  "Y",
-  "Z",
-  "O‘",
-  "G‘",
-  "Sh",
-  "Ch",
-];
+type CategoryItem = {
+  id: string | number;
+  value: string;
+  uz: string;
+  ru?: string | null;
+};
 
-function normalizeText(text: string) {
-  return text
+function createSlug(title: string) {
+  return title
     .toLowerCase()
-    .replaceAll("'", "‘")
-    .replaceAll("ʼ", "‘")
-    .trim();
+    .trim()
+    .replace(/['’`‘ʻ]/g, "")
+    .replace(/\s+/g, "-");
 }
 
-function startsWithLetter(word: string, letter: string) {
-  const normalizedWord = normalizeText(word);
-  const normalizedLetter = normalizeText(letter);
-
-  return normalizedWord.startsWith(normalizedLetter);
-}
-
-function uniqueValues(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b)
-  );
-}
-
-export default function WordsPage() {
-  const [words, setWords] = useState<WordItem[]>([]);
+export default function HomePage() {
+  const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = useState("");
-  const [selectedLetter, setSelectedLetter] = useState("all");
-  const [selectedYear, setSelectedYear] = useState("all");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-
   useEffect(() => {
-    async function loadWords() {
-      try {
-        setLoading(true);
+    async function loadData() {
+      setLoading(true);
 
-        const response = await fetch("/api/words", {
-          cache: "no-store",
-        });
+      const { data: wordsData, error: wordsError } = await supabase
+        .from("words")
+        .select("*")
+        .order("title", { ascending: true });
 
-        const data = await response.json();
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from("categories")
+        .select("*")
+        .order("uz", { ascending: true });
 
-        if (!response.ok) {
-          throw new Error(data?.message || "Ma’lumotlarni yuklashda xatolik");
-        }
-
-        if (Array.isArray(data)) {
-          setWords(data);
-        } else if (Array.isArray(data.words)) {
-          setWords(data.words);
-        } else {
-          setWords([]);
-        }
-      } catch (error) {
-        console.error(error);
-        setWords([]);
-      } finally {
-        setLoading(false);
+      if (wordsError) {
+        console.error("Words error:", wordsError.message);
       }
+
+      if (categoriesError) {
+        console.error("Categories error:", categoriesError.message);
+      }
+
+      setWords((wordsData || []) as Word[]);
+      setCategories((categoriesData || []) as CategoryItem[]);
+      setLoading(false);
     }
 
-    loadWords();
+    loadData();
   }, []);
 
-  const years = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const startYear = 2015;
-
-    return Array.from(
-      { length: currentYear - startYear + 1 },
-      (_, index) => currentYear - index
-    );
-  }, []);
-
-  const categories = useMemo(() => {
-    return uniqueValues(words.map((item) => item.category || ""));
+  const popularWords = useMemo(() => {
+    return words.slice(0, 6);
   }, [words]);
 
-  const filteredWords = useMemo(() => {
-    return words.filter((item) => {
-      const title = item.title || "";
-      const meaning = item.meaning || "";
-      const category = item.category || "";
+  function handleSearch() {
+    const query = search.trim();
 
-      const searchText = normalizeText(search);
+    if (query) {
+      window.location.href = `/words?q=${encodeURIComponent(query)}`;
+      return;
+    }
 
-      const matchesSearch =
-        !searchText ||
-        normalizeText(title).includes(searchText) ||
-        normalizeText(meaning).includes(searchText) ||
-        normalizeText(category).includes(searchText);
+    window.location.href = "/words";
+  }
 
-      const matchesLetter =
-        selectedLetter === "all" || startsWithLetter(title, selectedLetter);
-
-      const matchesYear =
-        selectedYear === "all" ||
-        Number(item.appearance_year) === Number(selectedYear);
-
-      const matchesCategory =
-        selectedCategory === "all" || category === selectedCategory;
-
-      return matchesSearch && matchesLetter && matchesYear && matchesCategory;
-    });
-  }, [words, search, selectedLetter, selectedYear, selectedCategory]);
-
-  function resetFilters() {
-    setSearch("");
-    setSelectedLetter("all");
-    setSelectedYear("all");
-    setSelectedCategory("all");
+  function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      handleSearch();
+    }
   }
 
   return (
-    <main style={styles.page}>
-      <section style={styles.hero}>
-        <Link href="/" style={styles.backLink}>
-          ← Bosh sahifa
-        </Link>
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+          <a href="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white">
+              📖
+            </div>
 
-        <h1 style={styles.title}>Neologizmlar lug‘ati</h1>
+            <div>
+              <h1 className="text-xl font-bold">neologizmlar.uz</h1>
+              <p className="text-sm text-slate-500">
+                Elektron neologizmlar lug‘ati
+              </p>
+            </div>
+          </a>
 
-        <p style={styles.subtitle}>
-          So‘zlarni harf, yil va kategoriya bo‘yicha saralash imkoniyati.
-        </p>
+          <nav className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
+            <a href="/words" className="hover:text-blue-600">
+              Lug‘at
+            </a>
+            <a href="#categories" className="hover:text-blue-600">
+              Kategoriyalar
+            </a>
+            <a href="#about" className="hover:text-blue-600">
+              Qanday ishlaydi
+            </a>
+            <a href="/about" className="hover:text-blue-600">
+              Loyiha haqida
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      <section className="bg-gradient-to-b from-white to-blue-50">
+        <div className="mx-auto max-w-6xl px-6 py-20 text-center">
+          <div className="mx-auto mb-6 inline-flex rounded-full bg-blue-100 px-5 py-2 text-sm font-medium text-blue-700">
+            O‘zbek tilidagi yangi so‘zlar elektron lug‘ati
+          </div>
+
+          <h2 className="mx-auto mb-6 max-w-4xl text-4xl font-bold leading-tight text-slate-950 md:text-6xl">
+            Neologizmlarni tez, qulay va tartibli izlash platformasi
+          </h2>
+
+          <p className="mx-auto mb-10 max-w-3xl text-lg leading-8 text-slate-600">
+            Saytda yangi so‘zlarning ma’nosi, qo‘llanish sohasi, misollari va
+            manbalari jamlanadi.
+          </p>
+
+          <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-3xl bg-white p-3 shadow-lg sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="So‘z kiriting: layk, bloger, strim..."
+              className="w-full bg-transparent px-5 py-4 outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="rounded-2xl bg-blue-600 px-7 py-4 font-semibold text-white hover:bg-blue-700"
+            >
+              Izlash
+            </button>
+          </div>
+
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <a
+              href="/words"
+              className="rounded-full bg-slate-900 px-6 py-3 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Barcha so‘zlar
+            </a>
+
+            {categories.slice(0, 5).map((category) => (
+              <a
+                key={category.id}
+                href={`/words?q=${encodeURIComponent(
+                  category.value || category.uz
+                )}`}
+                className="rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-medium text-slate-700 shadow-sm hover:border-blue-400 hover:text-blue-600"
+              >
+                {category.uz || category.value}
+              </a>
+            ))}
+          </div>
+        </div>
       </section>
 
-      <section style={styles.filtersBox}>
-        <div style={styles.searchRow}>
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="So‘z, izoh yoki kategoriya bo‘yicha qidirish..."
-            style={styles.searchInput}
-          />
-
-          <button type="button" onClick={resetFilters} style={styles.resetButton}>
-            Tozalash
-          </button>
+      <section id="categories" className="mx-auto max-w-6xl px-6 py-16">
+        <div className="mb-10 text-center">
+          <h2 className="mb-4 text-4xl font-bold">Kategoriyalar</h2>
+          <p className="text-slate-600">
+            Kategoriyalar admin panel orqali qo‘shiladi va boshqariladi.
+          </p>
         </div>
 
-        <div style={styles.filterBlock}>
-          <h3 style={styles.filterTitle}>Harf bo‘yicha</h3>
-
-          <div style={styles.buttonGroup}>
-            <button
-              type="button"
-              onClick={() => setSelectedLetter("all")}
-              style={{
-                ...styles.filterButton,
-                ...(selectedLetter === "all" ? styles.activeButton : {}),
-              }}
-            >
-              Barchasi
-            </button>
-
-            {alphabet.map((letter) => (
-              <button
-                type="button"
-                key={letter}
-                onClick={() => setSelectedLetter(letter)}
-                style={{
-                  ...styles.filterButton,
-                  ...(selectedLetter === letter ? styles.activeButton : {}),
-                }}
-              >
-                {letter}
-              </button>
-            ))}
+        {loading ? (
+          <div className="rounded-3xl bg-white p-10 text-center shadow-sm">
+            <p className="text-slate-600">Yuklanmoqda...</p>
           </div>
-        </div>
-
-        <div style={styles.filterBlock}>
-          <h3 style={styles.filterTitle}>Yil bo‘yicha</h3>
-
-          <div style={styles.buttonGroup}>
-            <button
-              type="button"
-              onClick={() => setSelectedYear("all")}
-              style={{
-                ...styles.filterButton,
-                ...(selectedYear === "all" ? styles.activeButton : {}),
-              }}
-            >
-              Barchasi
-            </button>
-
-            {years.map((year) => (
-              <button
-                type="button"
-                key={year}
-                onClick={() => setSelectedYear(String(year))}
-                style={{
-                  ...styles.filterButton,
-                  ...(selectedYear === String(year) ? styles.activeButton : {}),
-                }}
-              >
-                {year}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={styles.filterBlock}>
-          <h3 style={styles.filterTitle}>Kategoriya bo‘yicha</h3>
-
-          <div style={styles.buttonGroup}>
-            <button
-              type="button"
-              onClick={() => setSelectedCategory("all")}
-              style={{
-                ...styles.filterButton,
-                ...(selectedCategory === "all" ? styles.activeButton : {}),
-              }}
-            >
-              Barchasi
-            </button>
-
+        ) : categories.length > 0 ? (
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {categories.map((category) => (
-              <button
-                type="button"
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                style={{
-                  ...styles.filterButton,
-                  ...(selectedCategory === category ? styles.activeButton : {}),
-                }}
+              <a
+                key={category.id}
+                href={`/words?q=${encodeURIComponent(
+                  category.value || category.uz
+                )}`}
+                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md"
               >
-                {category}
-              </button>
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-xl">
+                  🗂️
+                </div>
+
+                <h3 className="mb-3 text-2xl font-bold text-slate-950">
+                  {category.uz || category.value}
+                </h3>
+
+                <p className="leading-7 text-slate-600">
+                  Ushbu kategoriya bo‘yicha neologizmlarni ko‘rish.
+                </p>
+
+                <p className="mt-5 font-medium text-blue-600">Ko‘rish →</p>
+              </a>
             ))}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
+            <h3 className="mb-3 text-2xl font-bold">
+              Kategoriyalar hozircha yo‘q
+            </h3>
+            <p className="text-slate-600">
+              Kategoriyalarni admin panel orqali qo‘shishingiz mumkin.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white">
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="mb-4 text-4xl font-bold">Mashhur so‘zlar</h2>
+              <p className="text-slate-600">
+                Lug‘atda mavjud bo‘lgan ayrim yangi so‘zlar.
+              </p>
+            </div>
+
+            <a
+              href="/words"
+              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Lug‘atga o‘tish
+            </a>
+          </div>
+
+          {loading ? (
+            <div className="rounded-3xl bg-slate-50 p-10 text-center">
+              <p className="text-slate-600">Yuklanmoqda...</p>
+            </div>
+          ) : popularWords.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-3">
+              {popularWords.map((word, index) => (
+                <a
+                  key={`${word.title}-${index}`}
+                  href={`/words/${encodeURIComponent(
+                    word.slug || createSlug(word.title)
+                  )}`}
+                  className="rounded-3xl border border-slate-200 bg-slate-50 p-6 hover:bg-blue-50"
+                >
+                  <span className="mb-4 inline-block rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-700">
+                    {word.category}
+                  </span>
+
+                  <h3 className="mb-3 text-2xl font-bold text-blue-700">
+                    {word.title}
+                  </h3>
+
+                  <p className="line-clamp-3 leading-7 text-slate-600">
+                    {word.meaning}
+                  </p>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+              <h3 className="mb-3 text-2xl font-bold">
+                So‘zlar hozircha kiritilmagan
+              </h3>
+              <p className="text-slate-600">
+                Yangi so‘zlarni admin panel orqali qo‘shishingiz mumkin.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section id="about" className="mx-auto max-w-6xl px-6 py-16">
+        <div className="rounded-3xl bg-slate-900 p-8 text-white md:p-12">
+          <h2 className="mb-5 text-4xl font-bold">Qanday ishlaydi?</h2>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="rounded-3xl bg-white/10 p-6">
+              <div className="mb-4 text-3xl">1</div>
+              <h3 className="mb-3 text-xl font-bold">So‘z qo‘shiladi</h3>
+              <p className="leading-7 text-slate-300">
+                Admin panel orqali yangi neologizm, ma’nosi va misoli
+                kiritiladi.
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-white/10 p-6">
+              <div className="mb-4 text-3xl">2</div>
+              <h3 className="mb-3 text-xl font-bold">Kategoriya tanlanadi</h3>
+              <p className="leading-7 text-slate-300">
+                Har bir so‘z tegishli mavzu yoki soha bo‘yicha ajratiladi.
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-white/10 p-6">
+              <div className="mb-4 text-3xl">3</div>
+              <h3 className="mb-3 text-xl font-bold">Foydalanuvchi izlaydi</h3>
+              <p className="leading-7 text-slate-300">
+                Sayt foydalanuvchisi so‘zlarni izlash, kategoriya yoki alfavit
+                bo‘yicha ko‘rishi mumkin.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section style={styles.resultHeader}>
-        <p style={styles.resultCount}>
-          Topildi: <b>{filteredWords.length}</b> ta so‘z
-        </p>
-      </section>
+      <footer className="border-t bg-white">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-3 px-6 py-8 text-center text-sm text-slate-500">
+          <span>© 2026 neologizmlar.uz</span>
 
-      {loading ? (
-        <div style={styles.emptyBox}>Yuklanmoqda...</div>
-      ) : filteredWords.length === 0 ? (
-        <div style={styles.emptyBox}>
-          Tanlangan filtrlar bo‘yicha so‘z topilmadi.
+          <span>·</span>
+
+          <a href="/about" className="font-semibold text-blue-600 hover:text-blue-700">
+            Loyiha haqida
+          </a>
+
+          <span>·</span>
+
+          <a
+            href="mailto:anechkavapayeva@gmail.com"
+            className="font-semibold text-blue-600 hover:text-blue-700"
+          >
+            anechkavapayeva@gmail.com
+          </a>
         </div>
-      ) : (
-        <section style={styles.grid}>
-          {filteredWords.map((item) => (
-            <Link key={item.id} href={`/words/${item.slug}`} style={styles.card}>
-              <div style={styles.cardTop}>
-                <h2 style={styles.wordTitle}>{item.title}</h2>
-
-                {item.appearance_year ? (
-                  <span style={styles.yearBadge}>{item.appearance_year}</span>
-                ) : null}
-              </div>
-
-              {item.category ? (
-                <span style={styles.categoryBadge}>{item.category}</span>
-              ) : null}
-
-              {item.meaning ? (
-                <p style={styles.definition}>{item.meaning}</p>
-              ) : (
-                <p style={styles.definitionMuted}>Izoh kiritilmagan</p>
-              )}
-
-              <span style={styles.more}>Batafsil →</span>
-            </Link>
-          ))}
-        </section>
-      )}
+      </footer>
     </main>
   );
 }
-
-const styles: Record<string, CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background: "#f7f8fb",
-    padding: "32px 18px 60px",
-    color: "#172033",
-  },
-
-  hero: {
-    maxWidth: 1120,
-    margin: "0 auto 22px",
-  },
-
-  backLink: {
-    display: "inline-block",
-    marginBottom: 18,
-    color: "#2563eb",
-    textDecoration: "none",
-    fontSize: 15,
-    fontWeight: 600,
-  },
-
-  title: {
-    margin: 0,
-    fontSize: 42,
-    lineHeight: 1.1,
-    fontWeight: 800,
-    letterSpacing: "-0.03em",
-  },
-
-  subtitle: {
-    marginTop: 12,
-    marginBottom: 0,
-    fontSize: 17,
-    color: "#667085",
-    maxWidth: 680,
-    lineHeight: 1.6,
-  },
-
-  filtersBox: {
-    maxWidth: 1120,
-    margin: "0 auto",
-    background: "#ffffff",
-    border: "1px solid #e6e9f0",
-    borderRadius: 22,
-    padding: 20,
-    boxShadow: "0 12px 35px rgba(15, 23, 42, 0.06)",
-  },
-
-  searchRow: {
-    display: "flex",
-    gap: 12,
-    marginBottom: 18,
-    flexWrap: "wrap",
-  },
-
-  searchInput: {
-    flex: "1 1 320px",
-    border: "1px solid #d8deea",
-    borderRadius: 14,
-    padding: "14px 16px",
-    fontSize: 15,
-    outline: "none",
-    background: "#fbfcff",
-  },
-
-  resetButton: {
-    border: "none",
-    borderRadius: 14,
-    padding: "14px 18px",
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: "pointer",
-    background: "#172033",
-    color: "#ffffff",
-  },
-
-  filterBlock: {
-    marginTop: 18,
-  },
-
-  filterTitle: {
-    margin: "0 0 10px",
-    fontSize: 16,
-    fontWeight: 800,
-  },
-
-  buttonGroup: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-
-  filterButton: {
-    border: "1px solid #d8deea",
-    background: "#ffffff",
-    color: "#344054",
-    borderRadius: 999,
-    padding: "9px 13px",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-
-  activeButton: {
-    background: "#2563eb",
-    borderColor: "#2563eb",
-    color: "#ffffff",
-  },
-
-  resultHeader: {
-    maxWidth: 1120,
-    margin: "22px auto 12px",
-  },
-
-  resultCount: {
-    margin: 0,
-    color: "#475467",
-    fontSize: 15,
-  },
-
-  grid: {
-    maxWidth: 1120,
-    margin: "0 auto",
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-    gap: 16,
-  },
-
-  card: {
-    display: "block",
-    background: "#ffffff",
-    border: "1px solid #e6e9f0",
-    borderRadius: 20,
-    padding: 18,
-    textDecoration: "none",
-    color: "#172033",
-    boxShadow: "0 10px 25px rgba(15, 23, 42, 0.04)",
-    transition: "0.2s ease",
-  },
-
-  cardTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 10,
-  },
-
-  wordTitle: {
-    margin: 0,
-    fontSize: 23,
-    lineHeight: 1.2,
-    fontWeight: 800,
-    letterSpacing: "-0.02em",
-  },
-
-  yearBadge: {
-    flexShrink: 0,
-    borderRadius: 999,
-    padding: "6px 10px",
-    background: "#eff6ff",
-    color: "#2563eb",
-    fontSize: 13,
-    fontWeight: 800,
-  },
-
-  categoryBadge: {
-    display: "inline-block",
-    marginBottom: 12,
-    borderRadius: 999,
-    padding: "6px 10px",
-    background: "#f2f4f7",
-    color: "#475467",
-    fontSize: 13,
-    fontWeight: 700,
-  },
-
-  definition: {
-    margin: "0 0 14px",
-    color: "#475467",
-    fontSize: 15,
-    lineHeight: 1.55,
-    display: "-webkit-box",
-    WebkitLineClamp: 3,
-    WebkitBoxOrient: "vertical",
-    overflow: "hidden",
-  },
-
-  definitionMuted: {
-    margin: "0 0 14px",
-    color: "#98a2b3",
-    fontSize: 15,
-    lineHeight: 1.55,
-  },
-
-  more: {
-    color: "#2563eb",
-    fontSize: 14,
-    fontWeight: 800,
-  },
-
-  emptyBox: {
-    maxWidth: 1120,
-    margin: "0 auto",
-    background: "#ffffff",
-    border: "1px solid #e6e9f0",
-    borderRadius: 20,
-    padding: 28,
-    color: "#667085",
-    textAlign: "center",
-    fontSize: 16,
-  },
-};
